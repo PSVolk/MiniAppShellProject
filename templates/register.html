@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация - Мотосервис "МотоМастер"</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Логотип мотосервиса">
+        </div>
+        <h1>Регистрация</h1>
+        <nav>
+            <a href="{{ url_for('home') }}">На главную</a>
+        </nav>
+    </header>
+
+    <main>
+        <!-- Блок для сообщений -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <!-- Форма регистрации -->
+        <section class="auth-form">
+            <h2>Создайте аккаунт</h2>
+            <form method="POST" action="{{ url_for('register') }}">
+                <label for="username">Имя пользователя:</label>
+                <input type="text" id="username" name="username" required>
+
+                <label for="password">Пароль:</label>
+                <input type="password" id="password" name="password" required>
+
+                <label for="phone">Телефон:</label>
+                <input type="tel" id="phone" name="phone" required>
+
+                <button type="submit">Зарегистрироваться</button>
+            </form>
+            <p>Уже есть аккаунт? <a href="{{ url_for('login') }}">Войдите</a>.</p>
+        </section>
+    </main>
+
+    <footer>
+        <p>Контакты: +7 (123) 456-78-90 | г. Уфа, ул. Мотоциклетная, д. 1</p>
+    </footer>
+</body>
+</html>

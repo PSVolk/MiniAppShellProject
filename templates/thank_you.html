@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Спасибо за заказ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Логотип мотосервиса">
+        </div>
+        <h1>Мотосервис "МотоМастер"</h1>
+    </header>
+
+    <main>
+        <section class="thank-you">
+            <h2>Спасибо за ваш заказ!</h2>
+            <p>Мы свяжемся с вами в ближайшее время для уточнения деталей.</p>
+             <a href="/">Вернуться на главную</a>
+            <p>Теперь вы можете воспользоваться нашим Telegram-ботом:</p>
+        <a href="{{ telegram_bot_link }}" target="_blank">Перейти в Telegram-бот</a>
+
+        </section>
+    </main>
+
+    <footer>
+        <p>Контакты: +7 (123) 456-78-90 | г. Уфа, ул. Мотоциклетная, д. 1</p>
+    </footer>
+</body>
+</html>
