@@ -21,19 +21,6 @@ TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 # ID чата администратора
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-WEBHOOK_URL = 'https://motomaster.onrender.com/webhook'
-
-def set_webhook():
-    url = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/setWebhook'
-    payload = {
-        'url': WEBHOOK_URL
-    }
-    response = requests.post(url, json=payload)
-    return response.json()
-
-# Вызовите эту функцию при запуске приложения
-set_webhook()
-
 # Состояния для ConversationHandler
 CHOOSING_SERVICE, ENTERING_NAME, ENTERING_PHONE, ENTERING_PASSWORD = range(4)
 
