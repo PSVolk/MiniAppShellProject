@@ -30,6 +30,23 @@ TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 # Состояния для ConversationHandler
 CHOOSING_SERVICE, ENTERING_NAME, ENTERING_PHONE, ENTERING_PASSWORD = range(4)
 
+def check_telegram_api():
+    url = f'https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getMe'
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Ошибка при проверке API Telegram: {e}")
+        return None
+
+# Вызовите эту функцию при запуске приложения
+bot_info = check_telegram_api()
+if bot_info:
+    logger.info(f"Бот подключен: {bot_info}")
+else:
+    logger.error("Не удалось подключиться к API Telegram")
+
 # Услуги, доступные на сайте
 SERVICES = {
     "Замена масла": "oil_change",
