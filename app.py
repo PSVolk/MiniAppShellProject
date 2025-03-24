@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from dotenv import load_dotenv
 from datetime import datetime
@@ -147,13 +147,6 @@ def authenticate_user(username, password):
         return User(id=user_data[0], username=user_data[1], phone=user_data[3])
     return None
 
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    data = request.json
-    # Обработайте данные от Telegram
-    print(data)
-    return jsonify({'status': 'ok'})
-
 # Маршрут для регистрации
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -300,4 +293,4 @@ def admin():
         return render_template('admin_login.html')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(debug=True)
