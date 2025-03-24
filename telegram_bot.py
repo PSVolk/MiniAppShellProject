@@ -16,11 +16,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 load_dotenv()  # Загружаем переменные окружения из .env
 
-# # Токен вашего Telegram-бота
-# TELEGRAM_BOT_TOKEN = '7684324256:AAGLrK8CVtZyQFvtdLv3IMQDt0gMuR9ddCY'
-# # ID чата администратора
-# TELEGRAM_CHAT_ID = '-4707230825'
-
 # Токен вашего Telegram-бота
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 # ID чата администратора
