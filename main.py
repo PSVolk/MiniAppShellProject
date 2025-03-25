@@ -1,16 +1,34 @@
-# This is a sample Python script.
+import threading
+import logging
+from app import create_app
+from telegram_bot import run_bot  # Импортируем новую функцию
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+# Настройка логгирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('launcher.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
+def run_flask():
+    """Запуск Flask-приложения"""
+    app = create_app()
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-
-
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    print_hi('PyCharm')
+    logger.info("Запуск приложения...")
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    # Запускаем бот (он сам создаст свой поток)
+    bot_thread = run_bot()
+
+    # Запускаем Flask в основном потоке
+    try:
+        run_flask()
+    except KeyboardInterrupt:
+        logger.info("Приложение остановлено пользователем")
+    except Exception as e:
+        logger.critical(f"Ошибка Flask: {e}", exc_info=True)
