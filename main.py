@@ -28,7 +28,7 @@ if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не найден в .env файле!")
 
 # 4. Импорт и инициализация приложений
-from flask_app import create_app
+from app import create_app
 from telegram_bot import run_bot, application as bot_application
 
 app = create_app()
