@@ -13,6 +13,7 @@ from telegram.ext import (
     ContextTypes
 )
 from dotenv import load_dotenv
+load_dotenv()
 import os
 
 # Настройка логгирования
@@ -243,3 +244,5 @@ def run_bot():
 
 if __name__ == '__main__':
     run_bot()
+
+application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
