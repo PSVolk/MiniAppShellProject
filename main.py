@@ -3,7 +3,8 @@ import logging
 from dotenv import load_dotenv
 import asyncio
 from threading import Thread
-from flask import Flask
+from flask import Flask, request  # Добавлен импорт request
+from telegram import Update
 from telegram.ext import Application
 
 # 1. Инициализация логгера
@@ -27,11 +28,11 @@ if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не найден в .env файле!")
 
 # 4. Импорт и инициализация приложений
-from app import create_app
-from telegram_bot import run_bot
+from flask_app import create_app
+from telegram_bot import run_bot, application as bot_application
 
 app = create_app()
-application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+application = bot_application or Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 
 # 5. Маршруты Flask
