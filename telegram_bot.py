@@ -29,6 +29,40 @@ load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
+# Инициализация бота
+application = ApplicationBuilder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
+
+
+def register_handlers(app):
+    """Регистрация обработчиков команд"""
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text('Бот запущен и работает!')
+
+
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(update.message.text)
+
+
+def run_polling():
+    """Запуск бота в режиме polling"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    try:
+        loop.run_until_complete(application.initialize())
+        loop.run_until_complete(application.start())
+        loop.run_until_complete(application.updater.start_polling())
+        logger.info("Бот запущен в режиме polling")
+        loop.run_forever()
+    except Exception as e:
+        logger.error(f"Ошибка в run_polling: {e}")
+    finally:
+        loop.close()
+
 SERVICES = {
     "🛢️ Замена масла": "oil_change",
     "⛓️ Регулировка цепи": "chain_adjustment",
@@ -245,4 +279,4 @@ def run_bot():
 if __name__ == '__main__':
     run_bot()
 
-application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+# application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
