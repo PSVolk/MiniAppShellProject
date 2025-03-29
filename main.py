@@ -3,11 +3,11 @@ import logging
 from dotenv import load_dotenv
 import asyncio
 from threading import Thread
-from flask import Flask, request  # Добавлен импорт request
+from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application
 
-# 1. Инициализация логгера
+# 1. Настройка логгирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -23,6 +23,7 @@ IS_RENDER = os.getenv('IS_RENDER', 'false').lower() == 'true'
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET')
 RENDER_HOSTNAME = os.getenv('RENDER_EXTERNAL_HOSTNAME')
+PORT = int(os.getenv('PORT', '5000'))
 
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не найден в .env файле!")
@@ -34,8 +35,22 @@ from telegram_bot import run_bot, application as bot_application
 app = create_app()
 application = bot_application or Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
+# # 4. Инициализация приложений
+# app = Flask(__name__)
+# application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# 5. Маршруты Flask
+# 5. Импорт обработчиков бота
+from telegram_bot import register_handlers
+
+register_handlers(application)
+
+#
+# # 6. Маршруты Flask
+# @app.route('/')
+# def home():
+#     return "Flask приложение работает!"
+
+
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
     if not IS_RENDER:
@@ -53,7 +68,7 @@ def telegram_webhook():
         return "Server Error", 500
 
 
-# 6. Режимы работы
+# 7. Функции запуска
 async def setup_webhook():
     """Настройка вебхука для Render"""
     await application.initialize()
@@ -67,26 +82,27 @@ async def setup_webhook():
 
 def run_flask():
     """Запуск Flask сервера"""
-    app.run(host='0.0.0.0', port=5000, debug=not IS_RENDER, use_reloader=False)
+    app.run(host='0.0.0.0', port=PORT, debug=not IS_RENDER, use_reloader=False)
 
 
 def run_async(coroutine):
-    """Запуск асинхронной функции в новом event loop"""
+    """Запуск асинхронной функции"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(coroutine)
 
 
-# 7. Главная функция
+# 8. Главная функция
 def main():
     if IS_RENDER:
         logger.info("Режим: Render (вебхуки)")
         # Настройка вебхука
-        Thread(target=run_async, args=(setup_webhook(),), daemon=True).start()
+        Thread(target=run_async, args=(setup_webhook(),)).start()
     else:
         logger.info("Режим: локальный (polling)")
-        # Запуск бота в отдельном потоке
-        run_bot()
+        # Запуск polling в отдельном потоке
+        from telegram_bot import run_polling
+        Thread(target=run_polling).start()
 
     # Запуск Flask в основном потоке
     run_flask()
