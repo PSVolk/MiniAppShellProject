@@ -23,14 +23,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-load_dotenv()
-
 # Конфигурация
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
-
-# Инициализация бота
-application = ApplicationBuilder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
 
 
 def register_handlers(app):
@@ -279,4 +274,7 @@ def run_bot():
 if __name__ == '__main__':
     run_bot()
 
-# application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+# Инициализация бота
+application = ApplicationBuilder().token(os.getenv('TELEGRAM_BOT_TOKEN')).build()
+
+
