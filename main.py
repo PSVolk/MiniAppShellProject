@@ -7,6 +7,8 @@ from flask import Flask, request
 from telegram import Update
 from telegram.ext import Application
 
+
+
 # 1. Настройка логгирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -30,26 +32,20 @@ if not TELEGRAM_BOT_TOKEN:
 
 # 4. Импорт и инициализация приложений
 from app import create_app
-from telegram_bot import run_bot, application as bot_application
+from telegram_bot import run_bot, init_bot
+# Инициализация Flask приложения
+app = Flask(__name__)
+
+# Инициализация бота
+bot_application = init_bot()
 
 app = create_app()
 application = bot_application or Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-
-# # 4. Инициализация приложений
-# app = Flask(__name__)
-# application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
 # 5. Импорт обработчиков бота
 from telegram_bot import register_handlers
 
 register_handlers(application)
-
-#
-# # 6. Маршруты Flask
-# @app.route('/')
-# def home():
-#     return "Flask приложение работает!"
-
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
@@ -101,8 +97,8 @@ def main():
     else:
         logger.info("Режим: локальный (polling)")
         # Запуск polling в отдельном потоке
-        from telegram_bot import run_polling
-        Thread(target=run_polling).start()
+
+        Thread(target=run_bot, daemon=True).start()
 
     # Запуск Flask в основном потоке
     run_flask()
