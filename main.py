@@ -39,34 +39,6 @@ from telegram_bot import init_bot, run_polling
 bot_application = init_bot()
 
 
-# def setup_webhook():
-#     """Настройка вебхука для Render"""
-#     import asyncio
-#
-#     async def _setup():
-#         await bot_application.initialize()
-#         await bot_application.start()
-#         await bot_application.bot.set_webhook(
-#             url=f"https://{RENDER_HOSTNAME}/webhook",
-#             secret_token=WEBHOOK_SECRET
-#         )
-#         logger.info(f"Вебхук установлен на https://{RENDER_HOSTNAME}/webhook")
-#
-#     loop = asyncio.new_event_loop()
-#     asyncio.set_event_loop(loop)
-#     try:
-#         loop.run_until_complete(_setup())
-#     finally:
-#         loop.close()
-
-# @app.route('/')
-# def home():
-#     """Корневой маршрут для проверки работы Flask"""
-#     return jsonify({
-#         "status": "running",
-#         "service": "Motomaster Bot",
-#         "mode": "webhook" if IS_RENDER else "polling"
-#     })
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():  # Добавляем async
@@ -97,74 +69,41 @@ def telegram_webhook():  # Добавляем async
         logger.error(f"Ошибка обработки вебхука: {e}", exc_info=True)
         return "Server Error", 500
 
-# @app.route('/webhook', methods=['POST'])
-# def telegram_webhook():
-#     if not IS_RENDER:
-#         return "Webhook mode disabled", 400
-#
-#     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
-#         return "Unauthorized", 403
-#
-#     try:
-#         update = Update.de_json(request.get_json(), bot_application.bot)
-#         bot_application.update_queue.put(update)
-#         return "OK", 200
-#     except Exception as e:
-#         logger.error(f"Ошибка обработки вебхука: {e}")
-#         return "Server Error", 500
-
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    return "OK", 200
 
 # def setup_webhook():
 #     """Настройка вебхука для Render"""
 #     import asyncio
-#
+
 #     async def _setup():
-#         await bot_application.initialize()
-#         await bot_application.start()
-#         await bot_application.bot.set_webhook(
-#             url=f"https://{RENDER_HOSTNAME}/webhook",
-#             secret_token=WEBHOOK_SECRET
-#         )
-#         logger.info(f"Вебхук установлен на https://{RENDER_HOSTNAME}/webhook")
-#
+#         try:
+#             await bot_application.initialize()
+#             await bot_application.start()
+#             webhook_url = f"https://{RENDER_HOSTNAME}/webhook"
+#             logger.info(f"Попытка установить вебхук на: {webhook_url}")
+#             result = await bot_application.bot.set_webhook(
+#                 url=webhook_url,
+#                 secret_token=WEBHOOK_SECRET
+#             )
+#             logger.info(f"Вебхук установлен: {result}")
+#             # Проверка текущего вебхука
+#             webhook_info = await bot_application.bot.get_webhook_info()
+#             logger.info(f"Информация о вебхуке: {webhook_info}")
+#         except Exception as e:
+#             logger.error(f"Ошибка при настройке вебхука: {e}")
+#             raise
+
 #     loop = asyncio.new_event_loop()
 #     asyncio.set_event_loop(loop)
 #     try:
 #         loop.run_until_complete(_setup())
+#     except Exception as e:
+#         logger.error(f"Ошибка в event loop: {e}")
 #     finally:
 #         loop.close()
-
-def setup_webhook():
-    """Настройка вебхука для Render"""
-    import asyncio
-
-    async def _setup():
-        try:
-            await bot_application.initialize()
-            await bot_application.start()
-            webhook_url = f"https://{RENDER_HOSTNAME}/webhook"
-            logger.info(f"Попытка установить вебхук на: {webhook_url}")
-            result = await bot_application.bot.set_webhook(
-                url=webhook_url,
-                secret_token=WEBHOOK_SECRET
-            )
-            logger.info(f"Вебхук установлен: {result}")
-            # Проверка текущего вебхука
-            webhook_info = await bot_application.bot.get_webhook_info()
-            logger.info(f"Информация о вебхуке: {webhook_info}")
-        except Exception as e:
-            logger.error(f"Ошибка при настройке вебхука: {e}")
-            raise
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_setup())
-    except Exception as e:
-        logger.error(f"Ошибка в event loop: {e}")
-    finally:
-        loop.close()
-        logger.info("Настройка вебхука завершена")
+#         logger.info("Настройка вебхука завершена")
 
 def run_flask():
     """Запуск Flask сервера"""
