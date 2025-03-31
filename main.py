@@ -1,26 +1,22 @@
 import os
 import logging
-from dotenv import load_dotenv
-import asyncio
 from threading import Thread
-from flask import Flask, request
+from flask import Flask, request, jsonify
 from telegram import Update
-from telegram.ext import Application
+from dotenv import load_dotenv
 
-
-
-# 1. Настройка логгирования
+# Настройка логгирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# 2. Загрузка переменных окружения
+# Загрузка переменных окружения
 load_dotenv()
 logger.info("Переменные окружения загружены")
 
-# 3. Конфигурация
+# Конфигурация
 IS_RENDER = os.getenv('IS_RENDER', 'false').lower() == 'true'
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET')
@@ -30,22 +26,47 @@ PORT = int(os.getenv('PORT', '5000'))
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не найден в .env файле!")
 
-# 4. Импорт и инициализация приложений
-from app import create_app
-from telegram_bot import run_bot, init_bot
 # Инициализация Flask приложения
+from app import create_app
 app = Flask(__name__)
+app = create_app()
+
+# Импорт из telegram_bot
+from telegram_bot import init_bot, run_polling
 
 # Инициализация бота
 bot_application = init_bot()
 
-app = create_app()
-application = bot_application or Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# 5. Импорт обработчиков бота
-from telegram_bot import register_handlers
+def setup_webhook():
+    """Настройка вебхука для Render"""
+    import asyncio
 
-register_handlers(application)
+    async def _setup():
+        await bot_application.initialize()
+        await bot_application.start()
+        await bot_application.bot.set_webhook(
+            url=f"https://{RENDER_HOSTNAME}/webhook",
+            secret_token=WEBHOOK_SECRET
+        )
+        logger.info(f"Вебхук установлен на https://{RENDER_HOSTNAME}/webhook")
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_setup())
+    finally:
+        loop.close()
+
+# @app.route('/')
+# def home():
+#     """Корневой маршрут для проверки работы Flask"""
+#     return jsonify({
+#         "status": "running",
+#         "service": "Motomaster Bot",
+#         "mode": "webhook" if IS_RENDER else "polling"
+#     })
+
 
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
@@ -56,49 +77,48 @@ def telegram_webhook():
         return "Unauthorized", 403
 
     try:
-        update = Update.de_json(request.get_json(), application.bot)
-        Thread(target=lambda: asyncio.run(application.process_update(update))).start()
+        update = Update.de_json(request.get_json(), bot_application.bot)
+        bot_application.update_queue.put(update)
         return "OK", 200
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}")
         return "Server Error", 500
 
 
-# 7. Функции запуска
-async def setup_webhook():
+def setup_webhook():
     """Настройка вебхука для Render"""
-    await application.initialize()
-    await application.start()
-    await application.bot.set_webhook(
-        url=f"https://{RENDER_HOSTNAME}/webhook",
-        secret_token=WEBHOOK_SECRET
-    )
-    logger.info(f"Вебхук установлен на https://{RENDER_HOSTNAME}/webhook")
+    import asyncio
 
+    async def _setup():
+        await bot_application.initialize()
+        await bot_application.start()
+        await bot_application.bot.set_webhook(
+            url=f"https://{RENDER_HOSTNAME}/webhook",
+            secret_token=WEBHOOK_SECRET
+        )
+        logger.info(f"Вебхук установлен на https://{RENDER_HOSTNAME}/webhook")
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(_setup())
+    finally:
+        loop.close()
 
 def run_flask():
     """Запуск Flask сервера"""
     app.run(host='0.0.0.0', port=PORT, debug=not IS_RENDER, use_reloader=False)
 
 
-def run_async(coroutine):
-    """Запуск асинхронной функции"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(coroutine)
-
-
-# 8. Главная функция
 def main():
     if IS_RENDER:
         logger.info("Режим: Render (вебхуки)")
-        # Настройка вебхука
-        Thread(target=run_async, args=(setup_webhook(),)).start()
+        setup_webhook()
     else:
         logger.info("Режим: локальный (polling)")
         # Запуск polling в отдельном потоке
-
-        Thread(target=run_bot, daemon=True).start()
+        bot_thread = Thread(target=run_polling, daemon=True)
+        bot_thread.start()
 
     # Запуск Flask в основном потоке
     run_flask()
