@@ -160,7 +160,7 @@ def setup_webhook():
 
 def run_flask():
     """Запуск Flask сервера"""
-    app.run(host='0.0.0.0', port=PORT, debug=not IS_RENDER, use_reloader=False)
+    app.run(host='0.0.0.0', port=PORT, debug=not IS_RENDER, use_reloader=False, threaded=True)
 
 
 def main():
