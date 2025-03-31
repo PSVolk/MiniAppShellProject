@@ -9,6 +9,8 @@ from telegram.ext import (
     ConversationHandler, ContextTypes
 )
 from dotenv import load_dotenv
+from asyncio import Queue
+update_queue = Queue()  
 import os
 
 # Настройка логгирования
