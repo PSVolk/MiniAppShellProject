@@ -68,22 +68,43 @@ bot_application = init_bot()
 #     })
 
 
+# @app.route('/webhook', methods=['POST'])
+# def telegram_webhook():
+#     if not IS_RENDER:
+#         return "Webhook mode disabled", 400
+
+#     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
+#         return "Unauthorized", 403
+
+#     try:
+#         update = Update.de_json(request.get_json(), bot_application.bot)
+#         bot_application.update_queue.put(update)
+#         return "OK", 200
+#     except Exception as e:
+#         logger.error(f"Ошибка обработки вебхука: {e}")
+#         return "Server Error", 500
+
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
+    logger.info("Получен запрос вебхука")
     if not IS_RENDER:
+        logger.warning("Попытка использовать webhook в не-Render режиме")
         return "Webhook mode disabled", 400
 
-    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
+    secret_token = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
+    if secret_token != WEBHOOK_SECRET:
+        logger.warning(f"Неверный секретный токен: {secret_token}")
         return "Unauthorized", 403
 
     try:
-        update = Update.de_json(request.get_json(), bot_application.bot)
+        update_data = request.get_json()
+        logger.debug(f"Данные обновления: {update_data}")
+        update = Update.de_json(update_data, bot_application.bot)
         bot_application.update_queue.put(update)
         return "OK", 200
     except Exception as e:
-        logger.error(f"Ошибка обработки вебхука: {e}")
+        logger.error(f"Ошибка обработки вебхука: {e}", exc_info=True)
         return "Server Error", 500
-
 
 # def setup_webhook():
 #     """Настройка вебхука для Render"""
