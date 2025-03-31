@@ -38,25 +38,25 @@ from telegram_bot import init_bot, run_polling
 bot_application = init_bot()
 
 
-def setup_webhook():
-    """Настройка вебхука для Render"""
-    import asyncio
+# def setup_webhook():
+#     """Настройка вебхука для Render"""
+#     import asyncio
 
-    async def _setup():
-        await bot_application.initialize()
-        await bot_application.start()
-        await bot_application.bot.set_webhook(
-            url=f"https://{RENDER_HOSTNAME}/webhook",
-            secret_token=WEBHOOK_SECRET
-        )
-        logger.info(f"Вебхук установлен на https://{RENDER_HOSTNAME}/webhook")
+#     async def _setup():
+#         await bot_application.initialize()
+#         await bot_application.start()
+#         await bot_application.bot.set_webhook(
+#             url=f"https://{RENDER_HOSTNAME}/webhook",
+#             secret_token=WEBHOOK_SECRET
+#         )
+#         logger.info(f"Вебхук установлен на https://{RENDER_HOSTNAME}/webhook")
 
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_setup())
-    finally:
-        loop.close()
+#     loop = asyncio.new_event_loop()
+#     asyncio.set_event_loop(loop)
+#     try:
+#         loop.run_until_complete(_setup())
+#     finally:
+#         loop.close()
 
 # @app.route('/')
 # def home():
