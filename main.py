@@ -69,7 +69,7 @@ bot_application = init_bot()
 #     })
 
 @app.route('/webhook', methods=['POST'])
-async def telegram_webhook():  # Добавляем async
+def telegram_webhook():  # Добавляем async
     logger.info("Получен запрос вебхука")
     if not IS_RENDER:
         logger.warning("Попытка использовать webhook в не-Render режиме")
@@ -85,13 +85,18 @@ async def telegram_webhook():  # Добавляем async
         logger.debug(f"Данные обновления: {update_data}")
         update = Update.de_json(update_data, bot_application.bot)
 
-        # Асинхронное добавление в очередь
-        await bot_application.update_queue.put(update)
+        # Синхронная обработка через run_until_complete
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(bot_application.update_queue.put(update))
+        loop.close()
+
         return "OK", 200
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}", exc_info=True)
         return "Server Error", 500
-    
+
 # @app.route('/webhook', methods=['POST'])
 # def telegram_webhook():
 #     if not IS_RENDER:
