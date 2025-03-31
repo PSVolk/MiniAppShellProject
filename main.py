@@ -68,25 +68,8 @@ bot_application = init_bot()
 #         "mode": "webhook" if IS_RENDER else "polling"
 #     })
 
-
-# @app.route('/webhook', methods=['POST'])
-# def telegram_webhook():
-#     if not IS_RENDER:
-#         return "Webhook mode disabled", 400
-
-#     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
-#         return "Unauthorized", 403
-
-#     try:
-#         update = Update.de_json(request.get_json(), bot_application.bot)
-#         bot_application.update_queue.put(update)
-#         return "OK", 200
-#     except Exception as e:
-#         logger.error(f"Ошибка обработки вебхука: {e}")
-#         return "Server Error", 500
-
 @app.route('/webhook', methods=['POST'])
-def telegram_webhook():
+async def telegram_webhook():  # Добавляем async
     logger.info("Получен запрос вебхука")
     if not IS_RENDER:
         logger.warning("Попытка использовать webhook в не-Render режиме")
@@ -101,11 +84,30 @@ def telegram_webhook():
         update_data = request.get_json()
         logger.debug(f"Данные обновления: {update_data}")
         update = Update.de_json(update_data, bot_application.bot)
-        bot_application.update_queue.put(update)
+
+        # Асинхронное добавление в очередь
+        await bot_application.update_queue.put(update)
         return "OK", 200
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}", exc_info=True)
         return "Server Error", 500
+    
+# @app.route('/webhook', methods=['POST'])
+# def telegram_webhook():
+#     if not IS_RENDER:
+#         return "Webhook mode disabled", 400
+#
+#     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
+#         return "Unauthorized", 403
+#
+#     try:
+#         update = Update.de_json(request.get_json(), bot_application.bot)
+#         bot_application.update_queue.put(update)
+#         return "OK", 200
+#     except Exception as e:
+#         logger.error(f"Ошибка обработки вебхука: {e}")
+#         return "Server Error", 500
+
 
 # def setup_webhook():
 #     """Настройка вебхука для Render"""
