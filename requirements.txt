@@ -24,4 +24,4 @@ Werkzeug==3.1.3
 python-telegram-bot[webhooks]>=20.0
 flask>=2.0
 python-dotenv
-pip install "flask[async]"
+flask[async]>=2.0.0
