@@ -4,7 +4,8 @@ from threading import Thread
 from flask import Flask, request, jsonify
 from telegram import Update
 from dotenv import load_dotenv
-
+import tracemalloc
+tracemalloc.start()  # для детализации RuntimeWarning
 # Настройка логгирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
