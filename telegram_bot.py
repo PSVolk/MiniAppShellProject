@@ -255,22 +255,20 @@ class BotManager:
     async def process_updates(self):
         """Обработка обновлений из очереди"""
         logger.info("Запуск обработчика обновлений")
-        while True:
-            try:
-                update = await self.application.update_queue.get()
-                logger.info(f"Обработка обновления ID: {update.update_id}")
+        try:
+            while True:
+                try:
+                    update = await self.application.update_queue.get()
+                    logger.info(f"Обработка обновления ID: {update.update_id}")
 
-                if update.message:
-                    logger.info(f"Текст сообщения: {update.message.text}")
-                elif update.callback_query:
-                    logger.info("Обработка callback запроса")
+                    await self.application.process_update(update)
+                    logger.info(f"Обновление {update.update_id} успешно обработано")
 
-                await self.application.process_update(update)
-                logger.info(f"Обновление {update.update_id} успешно обработано")
-
-            except Exception as e:
-                logger.error(f"Ошибка обработки обновления: {str(e)}", exc_info=True)
-                await asyncio.sleep(1)
+                except Exception as e:
+                    logger.error(f"Ошибка обработки обновления: {str(e)}", exc_info=True)
+                    await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            logger.info("Обработчик обновлений остановлен")
 
     async def run_webhook(self, hostname: str, port: int, secret_token: str):
         """Запуск бота в режиме webhook"""
@@ -292,11 +290,18 @@ class BotManager:
         )
         logger.info(f"Вебхук установлен на: {webhook_url}")
 
-        # Запуск обработчика очереди
+        # Создаем и запускаем обработчик в текущем event loop
         self.process_task = asyncio.create_task(self.process_updates())
 
-        # Бесконечное ожидание
-        await asyncio.Event().wait()
+        try:
+            # Бесконечное ожидание
+            while True:
+                await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            logger.info("Получен сигнал завершения")
+        finally:
+            await self.application.stop()
+            await self.application.shutdown()
 
     async def run_polling(self):
         """Запуск бота в режиме polling"""
