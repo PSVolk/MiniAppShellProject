@@ -260,18 +260,27 @@ class BotManager:
             try:
                 update = await self.application.update_queue.get()
                 logger.info(f"Processing update {update.update_id}")
+
+                # Добавьте отладочную информацию
+                if update.message:
+                    logger.info(f"Message content: {update.message.text}")
+
                 await self.application.process_update(update)
                 logger.info(f"Обработано обновление {update.update_id}")
+
             except Exception as e:
-                logger.error(f"Ошибка обработки обновления: {e}")
+                logger.error(f"Failed to process update: {str(e)}", exc_info=True)
+                await asyncio.sleep(1)  # Задержка при ошибках
 
     async def run_webhook(self, hostname: str, port: int, secret_token: str):
         """Запуск бота в режиме webhook"""
         if not self.application:
             self.init_bot()
 
-            # Запускаем обработчик очереди
-        asyncio.create_task(self.process_updates())
+        logger.info("Initializing webhook mode")
+
+        # Запуск обработчика очереди
+        self.process_task = asyncio.create_task(self.process_updates())
 
         webhook_url = f"https://{hostname}/webhook"
         await self.application.bot.set_webhook(
