@@ -1,12 +1,15 @@
 import os
 import logging
+import asyncio
+import time
 from threading import Thread
 from flask import Flask, request, jsonify
 from telegram import Update
 from dotenv import load_dotenv
 import tracemalloc
 
-tracemalloc.start()  # для детализации RuntimeWarning
+# Инициализация трекинга памяти
+tracemalloc.start()
 
 # Настройка логгирования
 logging.basicConfig(
@@ -32,12 +35,10 @@ if not TELEGRAM_BOT_TOKEN:
 # Инициализация Flask приложения
 from app import create_app
 
-app = Flask(__name__)
 app = create_app()
 
 # Импорт из telegram_bot
-from telegram_bot import init_bot, run_polling, run_webhook_sync, \
-    bot_manager  # Добавлен импорт run_webhook_sync и bot_manager
+from telegram_bot import init_bot, run_polling, bot_manager
 
 # Инициализация бота
 bot_application = init_bot()
@@ -48,7 +49,7 @@ def telegram_webhook():
     if not IS_RENDER:
         logger.warning("Попытка использовать webhook в не-Render режиме")
         return "Webhook mode disabled", 400
-        # Проверка секретного токена
+
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
         logger.warning("Invalid secret token")
         return "Unauthorized", 403
@@ -56,84 +57,94 @@ def telegram_webhook():
     try:
         update_data = request.get_json()
         logger.debug(f"Данные обновления: {update_data}")
+
         update = Update.de_json(update_data, bot_application.bot)
         logger.info(f"Parsed update: {update.update_id}")
 
         # Используем глобальный bot_manager из telegram_bot.py
         bot_manager.application.update_queue.put_nowait(update)
         logger.info("Update added to queue")
+
         return "OK", 200
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}", exc_info=True)
         return "Server Error", 500
 
 
+@app.route('/test-bot')
+def test_bot():
+    """Проверка состояния бота"""
+    try:
+        return jsonify({
+            "status": "running",
+            "queue_size": bot_manager.application.update_queue.qsize(),
+            "webhook": IS_RENDER,
+            "bot_initialized": hasattr(bot_manager, 'application')
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/test-message')
+def test_message():
+    """Тест обработки сообщения"""
+    try:
+        test_update = {
+            "update_id": 999999999,
+            "message": {
+                "message_id": 1,
+                "chat": {"id": 12345, "type": "private"},
+                "text": "/test",
+                "date": int(time.time())
+            }
+        }
+        update = Update.de_json(test_update, bot_manager.application.bot)
+        bot_manager.application.update_queue.put_nowait(update)
+        return jsonify({"status": "test message queued"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/healthcheck', methods=['GET'])
 def healthcheck():
     """Эндпоинт для проверки работоспособности"""
-    return jsonify({"status": "ok", "mode": "webhook" if IS_RENDER else "polling"}), 200
-
-
-def setup_webhook():
-    """Настройка вебхука для Render"""
-    import asyncio
-
-    async def _setup():
-        try:
-            await bot_application.initialize()
-            await bot_application.start()
-            webhook_url = f"https://{RENDER_HOSTNAME}/webhook"
-            logger.info(f"Попытка установить вебхук на: {webhook_url}")
-            result = await bot_application.bot.set_webhook(
-                url=webhook_url,
-                secret_token=WEBHOOK_SECRET,
-                drop_pending_updates=True
-            )
-            logger.info(f"Вебхук установлен: {result}")
-            webhook_info = await bot_application.bot.get_webhook_info()
-            logger.info(f"Информация о вебхуке: {webhook_info}")
-        except Exception as e:
-            logger.error(f"Ошибка при настройке вебхука: {e}")
-            raise
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(_setup())
-    except Exception as e:
-        logger.error(f"Ошибка в event loop: {e}")
-    finally:
-        loop.close()
-        logger.info("Настройка вебхука завершена")
+    return jsonify({
+        "status": "ok",
+        "mode": "webhook" if IS_RENDER else "polling",
+        "bot_ready": hasattr(bot_manager, 'application')
+    }), 200
 
 
 def run_flask():
     """Запуск Flask сервера"""
-    app.run(host='0.0.0.0', port=PORT, debug=not IS_RENDER, use_reloader=False, threaded=True)
+    app.run(
+        host='0.0.0.0',
+        port=PORT,
+        debug=not IS_RENDER,
+        use_reloader=False,
+        threaded=True
+    )
 
 
 def main():
     if IS_RENDER:
         logger.info("Starting in WEBHOOK mode")
 
-        # Явная инициализация бота
-        bot_manager.init_bot()
-
-        # Запуск обработки обновлений в фоне
-        def run_webhook_wrapper():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(bot_manager.run_webhook(
-                RENDER_HOSTNAME, PORT, WEBHOOK_SECRET
+        # Явная инициализация обработчика очереди
+        def start_webhook():
+            asyncio.run(bot_manager.run_webhook(
+                RENDER_HOSTNAME,
+                PORT,
+                WEBHOOK_SECRET
             ))
-            loop.run_forever()
 
-        Thread(target=run_webhook_wrapper, daemon=True).start()
+        Thread(target=start_webhook, daemon=True).start()
     else:
         logger.info("Starting in POLLING mode")
         Thread(target=run_polling, daemon=True).start()
 
     run_flask()
+
 
 if __name__ == '__main__':
     try:
