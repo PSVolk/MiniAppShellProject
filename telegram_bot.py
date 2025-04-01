@@ -255,9 +255,11 @@ class BotManager:
 
     async def process_updates(self):
         """Асинхронная обработка обновлений из очереди"""
+        logger.info("Starting update processor")
         while True:
-            update = await update_queue.get()
             try:
+                update = await self.application.update_queue.get()
+                logger.info(f"Processing update {update.update_id}")
                 await self.application.process_update(update)
                 logger.info(f"Обработано обновление {update.update_id}")
             except Exception as e:
@@ -268,9 +270,8 @@ class BotManager:
         if not self.application:
             self.init_bot()
 
-        logger.info("Бот запускается в режиме webhook...")
-        await self.application.initialize()
-        await self.application.start()
+            # Запускаем обработчик очереди
+        asyncio.create_task(self.process_updates())
 
         webhook_url = f"https://{hostname}/webhook"
         await self.application.bot.set_webhook(
@@ -278,6 +279,7 @@ class BotManager:
             secret_token=secret_token,
             drop_pending_updates=True
         )
+        logger.info(f"Webhook set to: {webhook_url}")
 
         # Запускаем обработчик очереди в фоне
         asyncio.create_task(self.process_updates())
@@ -285,7 +287,6 @@ class BotManager:
         logger.info(f"Вебхук установлен на {webhook_url}")
         logger.info("Бот готов к работе в режиме webhook")
 
-        # Бесконечный цикл не нужен - Flask будет обрабатывать запросы
 
     async def run_polling(self):
         """Запуск бота в режиме polling"""
