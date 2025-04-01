@@ -124,7 +124,18 @@ def run_flask():
         use_reloader=False,
         threaded=True
     )
-
+def run_webhook_wrapper():
+    """Обертка для запуска webhook в отдельном потоке"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(bot_manager.run_webhook(
+            RENDER_HOSTNAME, PORT, WEBHOOK_SECRET
+        ))
+    except Exception as e:
+        logger.error(f"Webhook failed: {e}")
+    finally:
+        loop.close()
 
 def main():
     if IS_RENDER:
