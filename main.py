@@ -48,19 +48,20 @@ def telegram_webhook():
     if not IS_RENDER:
         logger.warning("Попытка использовать webhook в не-Render режиме")
         return "Webhook mode disabled", 400
-
-    secret_token = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
-    if secret_token != WEBHOOK_SECRET:
-        logger.warning(f"Неверный секретный токен: {secret_token}")
+        # Проверка секретного токена
+    if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
+        logger.warning("Invalid secret token")
         return "Unauthorized", 403
 
     try:
         update_data = request.get_json()
         logger.debug(f"Данные обновления: {update_data}")
         update = Update.de_json(update_data, bot_application.bot)
+        logger.info(f"Parsed update: {update.update_id}")
 
         # Используем глобальный bot_manager из telegram_bot.py
         bot_manager.application.update_queue.put_nowait(update)
+        logger.info("Update added to queue")
         return "OK", 200
     except Exception as e:
         logger.error(f"Ошибка обработки вебхука: {e}", exc_info=True)
