@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 from dotenv import load_dotenv
 from asyncio import Queue
-update_queue = Queue()  
+update_queue = Queue()
 import os
 
 # Настройка логгирования
@@ -253,6 +253,40 @@ class BotManager:
         self.application.add_error_handler(self.error_handler)
         return self.application
 
+    async def process_updates(self):
+        """Асинхронная обработка обновлений из очереди"""
+        while True:
+            update = await update_queue.get()
+            try:
+                await self.application.process_update(update)
+                logger.info(f"Обработано обновление {update.update_id}")
+            except Exception as e:
+                logger.error(f"Ошибка обработки обновления: {e}")
+
+    async def run_webhook(self, hostname: str, port: int, secret_token: str):
+        """Запуск бота в режиме webhook"""
+        if not self.application:
+            self.init_bot()
+
+        logger.info("Бот запускается в режиме webhook...")
+        await self.application.initialize()
+        await self.application.start()
+
+        webhook_url = f"https://{hostname}/webhook"
+        await self.application.bot.set_webhook(
+            url=webhook_url,
+            secret_token=secret_token,
+            drop_pending_updates=True
+        )
+
+        # Запускаем обработчик очереди в фоне
+        asyncio.create_task(self.process_updates())
+
+        logger.info(f"Вебхук установлен на {webhook_url}")
+        logger.info("Бот готов к работе в режиме webhook")
+
+        # Бесконечный цикл не нужен - Flask будет обрабатывать запросы
+
     async def run_polling(self):
         """Запуск бота в режиме polling"""
         if not self.application:
@@ -264,9 +298,8 @@ class BotManager:
         await self.application.updater.start_polling()
         logger.info("Бот успешно запущен")
 
-        # Бесконечный цикл для поддержания работы
-        while True:
-            await asyncio.sleep(3600)
+        # Ожидаем остановки
+        await asyncio.Event().wait()
 
     def run_bot(self):
         """Запуск бота в отдельном потоке"""
@@ -286,16 +319,16 @@ bot_manager = BotManager()
 
 
 def init_bot():
-    """Инициализация бота (для совместимости)"""
+    """Инициализация бота"""
     return bot_manager.init_bot()
+
+def run_webhook_sync(hostname: str, port: int, secret_token: str):
+    """Синхронная обертка для запуска webhook"""
+    asyncio.run(bot_manager.run_webhook(hostname, port, secret_token))
 
 def run_polling():
     """Запуск бота в режиме polling (для совместимости)"""
-    bot_manager.run_bot()
-
-def run_bot():
-    """Запуск бота (для совместимости)"""
-    run_polling()
+    asyncio.run(bot_manager.run_polling())
 
 
 if __name__ == '__main__':
