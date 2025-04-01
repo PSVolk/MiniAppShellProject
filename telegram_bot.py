@@ -3,15 +3,13 @@ import hashlib
 import requests
 import sqlite3
 import logging
+import os
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters,
     ConversationHandler, ContextTypes
 )
 from dotenv import load_dotenv
-from asyncio import Queue
-update_queue = Queue()
-import os
 
 # Настройка логгирования
 logging.basicConfig(
@@ -52,6 +50,7 @@ services_keyboard = ReplyKeyboardMarkup(
 class BotManager:
     def __init__(self):
         self.application = None
+        self.process_task = None
         self._init_db()
 
     def _init_db(self):
@@ -161,7 +160,7 @@ class BotManager:
         return ENTERING_PASSWORD
 
     async def enter_password(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик ввода пароля и завершение заказа"""
+        """Обработчик ввода пароля"""
         try:
             password = update.message.text
             await update.message.delete()
@@ -254,74 +253,64 @@ class BotManager:
         return self.application
 
     async def process_updates(self):
-        """Асинхронная обработка обновлений из очереди"""
-        logger.info("Starting update processor")
+        """Обработка обновлений из очереди"""
+        logger.info("Запуск обработчика обновлений")
         while True:
             try:
                 update = await self.application.update_queue.get()
-                logger.info(f"Processing update {update.update_id}")
+                logger.info(f"Обработка обновления ID: {update.update_id}")
 
-                # Добавьте отладочную информацию
                 if update.message:
-                    logger.info(f"Message content: {update.message.text}")
+                    logger.info(f"Текст сообщения: {update.message.text}")
+                elif update.callback_query:
+                    logger.info("Обработка callback запроса")
 
                 await self.application.process_update(update)
-                logger.info(f"Обработано обновление {update.update_id}")
+                logger.info(f"Обновление {update.update_id} успешно обработано")
 
             except Exception as e:
-                logger.error(f"Failed to process update: {str(e)}", exc_info=True)
-                await asyncio.sleep(1)  # Задержка при ошибках
+                logger.error(f"Ошибка обработки обновления: {str(e)}", exc_info=True)
+                await asyncio.sleep(1)
 
     async def run_webhook(self, hostname: str, port: int, secret_token: str):
         """Запуск бота в режиме webhook"""
         if not self.application:
             self.init_bot()
 
-        logger.info("Initializing webhook mode")
+        logger.info("Запуск бота в режиме webhook")
 
-        # Запуск обработчика очереди
-        self.process_task = asyncio.create_task(self.process_updates())
+        # Инициализация приложения
+        await self.application.initialize()
+        await self.application.start()
 
+        # Настройка вебхука
         webhook_url = f"https://{hostname}/webhook"
         await self.application.bot.set_webhook(
             url=webhook_url,
             secret_token=secret_token,
             drop_pending_updates=True
         )
-        logger.info(f"Webhook set to: {webhook_url}")
+        logger.info(f"Вебхук установлен на: {webhook_url}")
 
-        # Запускаем обработчик очереди в фоне
-        asyncio.create_task(self.process_updates())
+        # Запуск обработчика очереди
+        self.process_task = asyncio.create_task(self.process_updates())
 
-        logger.info(f"Вебхук установлен на {webhook_url}")
-        logger.info("Бот готов к работе в режиме webhook")
-
+        # Бесконечное ожидание
+        await asyncio.Event().wait()
 
     async def run_polling(self):
         """Запуск бота в режиме polling"""
         if not self.application:
             self.init_bot()
 
-        logger.info("Бот запускается в режиме polling...")
+        logger.info("Запуск бота в режиме polling")
         await self.application.initialize()
         await self.application.start()
         await self.application.updater.start_polling()
         logger.info("Бот успешно запущен")
 
-        # Ожидаем остановки
+        # Бесконечное ожидание
         await asyncio.Event().wait()
-
-    def run_bot(self):
-        """Запуск бота в отдельном потоке"""
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-        try:
-            loop.run_until_complete(self.run_polling())
-        except Exception as e:
-            logger.error(f"Ошибка в работе бота: {e}")
-        finally:
-            loop.close()
 
 
 # Глобальный экземпляр для использования в Flask
@@ -332,14 +321,30 @@ def init_bot():
     """Инициализация бота"""
     return bot_manager.init_bot()
 
+
 def run_webhook_sync(hostname: str, port: int, secret_token: str):
     """Синхронная обертка для запуска webhook"""
     asyncio.run(bot_manager.run_webhook(hostname, port, secret_token))
 
+
 def run_polling():
-    """Запуск бота в режиме polling (для совместимости)"""
+    """Запуск бота в режиме polling"""
     asyncio.run(bot_manager.run_polling())
 
 
 if __name__ == '__main__':
-    run_polling()
+    try:
+        if os.getenv('TEST_WEBHOOK'):
+            async def test_webhook():
+                await bot_manager.run_webhook(
+                    "localhost",
+                    5000,
+                    "test_secret"
+                )
+
+
+            asyncio.run(test_webhook())
+        else:
+            run_polling()
+    except Exception as e:
+        logger.critical(f"Ошибка запуска: {str(e)}", exc_info=True)
