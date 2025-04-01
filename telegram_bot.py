@@ -10,6 +10,8 @@ from telegram.ext import (
     ConversationHandler, ContextTypes
 )
 from dotenv import load_dotenv
+from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
 
 # Настройка логгирования
 logging.basicConfig(
@@ -50,7 +52,8 @@ services_keyboard = ReplyKeyboardMarkup(
 class BotManager:
     def __init__(self):
         self.application = None
-        self.process_task = None
+        self.loop = asyncio.new_event_loop()
+        self.executor = ThreadPoolExecutor(max_workers=1)
         self._init_db()
 
     def _init_db(self):
@@ -270,39 +273,59 @@ class BotManager:
         except asyncio.CancelledError:
             logger.info("Обработчик обновлений остановлен")
 
-    async def run_webhook(self, hostname: str, port: int, secret_token: str):
-        """Запуск бота в режиме webhook"""
-        if not self.application:
-            self.init_bot()
+    async def _async_init(self):
+        """Асинхронная инициализация бота"""
+        self.application = ApplicationBuilder() \
+            .token(TELEGRAM_BOT_TOKEN) \
+            .build()
 
-        logger.info("Запуск бота в режиме webhook")
+        # Регистрация обработчиков
+        conv_handler = ConversationHandler(...)
+        self.application.add_handler(conv_handler)
 
-        # Инициализация приложения
-        await self.application.initialize()
-        await self.application.start()
+        # Создаем очередь в текущем event loop
+        self.update_queue = asyncio.Queue()
+        return self.application
 
-        # Настройка вебхука
-        webhook_url = f"https://{hostname}/webhook"
-        await self.application.bot.set_webhook(
-            url=webhook_url,
-            secret_token=secret_token,
-            drop_pending_updates=True
-        )
-        logger.info(f"Вебхук установлен на: {webhook_url}")
+    def run_webhook(self, hostname: str, port: int, secret_token: str):
+        """Синхронный запуск webhook"""
 
-        # Создаем и запускаем обработчик в текущем event loop
-        self.process_task = asyncio.create_task(self.process_updates())
+        async def _run():
+            app = await self._async_init()
+            await app.initialize()
+            await app.start()
 
-        try:
-            # Бесконечное ожидание
+            webhook_url = f"https://{hostname}/webhook"
+            await app.bot.set_webhook(
+                url=webhook_url,
+                secret_token=secret_token,
+                drop_pending_updates=True
+            )
+
+            # Запуск обработчика в том же loop
+            asyncio.create_task(self._process_updates(app))
+
             while True:
                 await asyncio.sleep(3600)
-        except asyncio.CancelledError:
-            logger.info("Получен сигнал завершения")
-        finally:
-            await self.application.stop()
-            await self.application.shutdown()
 
+        # Запуск в выделенном loop
+        self.loop.run_until_complete(_run())
+
+    async def _process_updates(self, app):
+        """Обработка обновлений"""
+        while True:
+            try:
+                update = await self.update_queue.get()
+                await app.process_update(update)
+            except Exception as e:
+                logging.error(f"Update error: {e}")
+
+    def put_update(self, update):
+        """Добавление обновления в очередь"""
+        asyncio.run_coroutine_threadsafe(
+            self.update_queue.put(update),
+            self.loop
+        )
     async def run_polling(self):
         """Запуск бота в режиме polling"""
         if not self.application:
