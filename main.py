@@ -114,21 +114,32 @@ def run_flask():
 
 def main():
     if IS_RENDER:
-        logger.info("Режим: Render (вебхуки)")
-        setup_webhook()  # Настраиваем вебхук перед запуском
+        logger.info("Starting in WEBHOOK mode")
+
+        # Явная инициализация бота
+        bot_manager.init_bot()
+
+        # Запуск обработки обновлений в фоне
+        def run_webhook_wrapper():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(bot_manager.run_webhook(
+                RENDER_HOSTNAME, PORT, WEBHOOK_SECRET
+            ))
+            loop.run_forever()
+
+        Thread(target=run_webhook_wrapper, daemon=True).start()
     else:
-        logger.info("Режим: локальный (polling)")
-        # Запуск polling в отдельном потоке
+        logger.info("Starting in POLLING mode")
         Thread(target=run_polling, daemon=True).start()
 
-    # Запуск Flask в основном потоке
     run_flask()
-
 
 if __name__ == '__main__':
     try:
+        logger.info("Starting application...")
         main()
     except Exception as e:
-        logger.error(f"Фатальная ошибка: {e}")
+        logger.critical(f"Application failed: {str(e)}", exc_info=True)
     finally:
-        logger.info("Приложение завершает работу")
+        logger.info("Application stopped")
