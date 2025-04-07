@@ -27,7 +27,7 @@ IS_RENDER = os.getenv('IS_RENDER', 'false').lower() == 'true'
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET')
 RENDER_HOSTNAME = os.getenv('RENDER_EXTERNAL_HOSTNAME')
-PORT = int(os.getenv('PORT', '5000'))
+PORT = int(os.getenv('PORT', '10000'))
 
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не найден в .env файле!")
