@@ -292,6 +292,9 @@ class BotManager:
         if not self.application:
             self.init_bot()
 
+        await self.application.initialize()
+        await self.application.start()
+
         webhook_url = f"https://{hostname}/webhook"
         await self.application.bot.set_webhook(
             url=webhook_url,
