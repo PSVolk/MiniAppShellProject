@@ -135,22 +135,18 @@ def run_webhook_wrapper():
 def main():
     if IS_RENDER:
         logger.info("Starting in WEBHOOK mode")
-
-        # Явная инициализация обработчика очереди
-        def start_webhook():
-            asyncio.run(bot_manager.run_webhook(
-                RENDER_HOSTNAME,
-                PORT,
-                WEBHOOK_SECRET
-            ))
-
-        Thread(target=start_webhook, daemon=True).start()
+        # Создаем отдельный поток для бота
+        bot_thread = Thread(target=bot_manager.run_webhook, args=(RENDER_HOSTNAME, PORT, WEBHOOK_SECRET))
+        bot_thread.daemon = True
+        bot_thread.start()
     else:
         logger.info("Starting in POLLING mode")
-        Thread(target=run_polling, daemon=True).start()
+        bot_thread = Thread(target=run_polling)
+        bot_thread.daemon = True
+        bot_thread.start()
 
+    # Запускаем Flask в основном потоке
     run_flask()
-
 
 if __name__ == '__main__':
     try:
