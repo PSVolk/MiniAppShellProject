@@ -55,8 +55,6 @@ class BotManager:
         self.loop = asyncio.new_event_loop()
         self.executor = ThreadPoolExecutor(max_workers=1)
         self._init_db()
-        self.update_queue = asyncio.Queue()
-        self.process_task = None
 
     def _init_db(self):
         """Инициализация базы данных"""
@@ -281,56 +279,37 @@ class BotManager:
             .token(TELEGRAM_BOT_TOKEN) \
             .build()
 
-        # Полная инициализация ConversationHandler
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler('start', self.start)],
-            states={
-                CHOOSING_SERVICE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_service)
-                ],
-                ENTERING_NAME: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.enter_name)
-                ],
-                ENTERING_PHONE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.enter_phone)
-                ],
-                ENTERING_PASSWORD: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.enter_password)
-                ],
-            },
-            fallbacks=[CommandHandler('cancel', self.cancel)]
-        )
-
+        # Регистрация обработчиков
+        conv_handler = ConversationHandler(...)
         self.application.add_handler(conv_handler)
-        self.application.add_error_handler(self.error_handler)
 
-    async def run_webhook(self, hostname: str, port: int, secret_token: str):
-        """Запуск бота в режиме webhook"""
-        try:
-            if not self.application:
-                await self._async_init()
+        # Создаем очередь в текущем event loop
+        self.update_queue = asyncio.Queue()
+        return self.application
 
-            await self.application.initialize()
-            await self.application.start()
+    def run_webhook(self, hostname: str, port: int, secret_token: str):
+        """Синхронный запуск webhook"""
+
+        async def _run():
+            app = await self._async_init()
+            await app.initialize()
+            await app.start()
 
             webhook_url = f"https://{hostname}/webhook"
-            await self.application.bot.set_webhook(
+            await app.bot.set_webhook(
                 url=webhook_url,
                 secret_token=secret_token,
                 drop_pending_updates=True
             )
-            logger.info(f"Webhook установлен на: {webhook_url}")
-            # Запуск обработчика обновлений
-            self.process_task = asyncio.create_task(self.process_updates(), loop=self.loop)
 
-            # Бесконечное ожидание
+            # Запуск обработчика в том же loop
+            asyncio.create_task(self._process_updates(app))
+
             while True:
                 await asyncio.sleep(3600)
 
-        except Exception as e:
-            logger.error(f"Ошибка в run_webhook: {e}")
-            raise
-
+        # Запуск в выделенном loop
+        self.loop.run_until_complete(_run())
 
     async def _process_updates(self, app):
         """Обработка обновлений"""
@@ -338,31 +317,28 @@ class BotManager:
             try:
                 update = await self.update_queue.get()
                 await app.process_update(update)
-                logging.info(f"Обработано обновление {update.update_id}")
             except Exception as e:
-                logging.error(f"Update error: {e}", exc_info=True)
+                logging.error(f"Update error: {e}")
 
     def put_update(self, update):
         """Добавление обновления в очередь"""
+        asyncio.run_coroutine_threadsafe(
+            self.update_queue.put(update),
+            self.loop
+        )
+    async def run_polling(self):
+        """Запуск бота в режиме polling"""
+        if not self.application:
+            self.init_bot()
 
-        async def _put():
-            await self.update_queue.put(update)
+        logger.info("Запуск бота в режиме polling")
+        await self.application.initialize()
+        await self.application.start()
+        await self.application.updater.start_polling()
+        logger.info("Бот успешно запущен")
 
-        asyncio.run_coroutine_threadsafe(_put(), self.loop)
-
-    # async def run_polling(self):
-    #     """Запуск бота в режиме polling"""
-    #     if not self.application:
-    #         self.init_bot()
-    #
-    #     logger.info("Запуск бота в режиме polling")
-    #     await self.application.initialize()
-    #     await self.application.start()
-    #     await self.application.updater.start_polling()
-    #     logger.info("Бот успешно запущен")
-    #
-    #     # Бесконечное ожидание
-    #     await asyncio.Event().wait()
+        # Бесконечное ожидание
+        await asyncio.Event().wait()
 
 
 # Глобальный экземпляр для использования в Flask
@@ -371,32 +347,32 @@ bot_manager = BotManager()
 
 def init_bot():
     """Инициализация бота"""
-    return bot_manager
+    return bot_manager.init_bot()
 
 
 def run_webhook_sync(hostname: str, port: int, secret_token: str):
-    """Синхронный запуск webhook"""
-    def _run():
-        asyncio.set_event_loop(bot_manager.loop)
-        try:
-            bot_manager.loop.run_until_complete(
-                bot_manager.run_webhook(hostname, port, secret_token)
-            )
-        except Exception as e:
-            logger.error(f"Ошибка запуска webhook: {e}", exc_info=True)
-        finally:
-            bot_manager.loop.close()
+    """Синхронная обертка для запуска webhook"""
+    asyncio.run(bot_manager.run_webhook(hostname, port, secret_token))
 
-    Thread(target=_run, daemon=True).start()
 
-# def run_polling():
-#     """Запуск бота в режиме polling"""
-#     asyncio.run(bot_manager.run_polling())
+def run_polling():
+    """Запуск бота в режиме polling"""
+    asyncio.run(bot_manager.run_polling())
 
 
 if __name__ == '__main__':
-    run_webhook_sync(
-        os.getenv('RENDER_EXTERNAL_HOSTNAME', 'localhost'),
-        int(os.getenv('PORT', '5000')),
-        os.getenv('WEBHOOK_SECRET', 'test_secret')
-    )
+    try:
+        if os.getenv('TEST_WEBHOOK'):
+            async def test_webhook():
+                await bot_manager.run_webhook(
+                    "localhost",
+                    5000,
+                    "test_secret"
+                )
+
+
+            asyncio.run(test_webhook())
+        else:
+            run_polling()
+    except Exception as e:
+        logger.critical(f"Ошибка запуска: {str(e)}", exc_info=True)
