@@ -44,6 +44,33 @@ from telegram_bot import init_bot, run_polling, bot_manager
 bot_application = init_bot()
 
 
+@app.route('/webhook-info')
+def webhook_info():
+    try:
+        if not hasattr(bot_manager, 'application'):
+            return jsonify({"error": "Bot not initialized"}), 500
+
+        webhook_info = bot_manager.application.bot.get_webhook_info()
+        return jsonify({
+            "url": webhook_info.url,
+            "has_custom_certificate": webhook_info.has_custom_certificate,
+            "pending_update_count": webhook_info.pending_update_count,
+            "last_error_date": webhook_info.last_error_date,
+            "last_error_message": webhook_info.last_error_message
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/check-routes')
+def check_routes():
+    routes = []
+    for rule in app.url_map.iter_rules():
+        routes.append({
+            "route": str(rule),
+            "methods": list(rule.methods)
+        })
+    return jsonify(routes)
+
 @app.route('/webhook', methods=['POST'])
 def telegram_webhook():
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
