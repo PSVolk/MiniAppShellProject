@@ -50,17 +50,22 @@ def webhook_info():
         if not hasattr(bot_manager, 'application'):
             return jsonify({"error": "Bot not initialized"}), 500
 
-        webhook_info = bot_manager.application.bot.get_webhook_info()
+        # Получаем информацию о webhook синхронно
+        async def get_webhook_info_async():
+            return await bot_manager.application.bot.get_webhook_info()
+
+        loop = asyncio.new_event_loop()
+        webhook_info = loop.run_until_complete(get_webhook_info_async())
+        loop.close()
+
         return jsonify({
             "url": webhook_info.url,
-            "has_custom_certificate": webhook_info.has_custom_certificate,
             "pending_update_count": webhook_info.pending_update_count,
-            "last_error_date": webhook_info.last_error_date,
+            "last_error_date": webhook_info.last_error_date.isoformat() if webhook_info.last_error_date else None,
             "last_error_message": webhook_info.last_error_message
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+        return jsonify({"error": str(e), "type": type(e).__name__}), 500
 @app.route('/check-routes')
 def check_routes():
     routes = []
@@ -85,13 +90,31 @@ def telegram_webhook():
         return "Error", 500
 
 
-def run_webhook_thread():
-    """Запуск бота в отдельном потоке"""
-    bot_manager.run_webhook(RENDER_HOSTNAME, PORT, WEBHOOK_SECRET)
+# def run_webhook_thread():
+#     """Запуск бота в отдельном потоке"""
+#     bot_manager.run_webhook(RENDER_HOSTNAME, PORT, WEBHOOK_SECRET)
+# 
+# 
+# if IS_RENDER:
+#     Thread(target=run_webhook_thread, daemon=True).start()
 
+def run_webhook_wrapper():
+    """Обертка для запуска webhook"""
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(bot_manager.run_webhook(
+            RENDER_HOSTNAME, 
+            PORT, 
+            WEBHOOK_SECRET
+        ))
+    except Exception as e:
+        logger.error(f"Webhook failed: {e}")
+    finally:
+        loop.close()
 
 if IS_RENDER:
-    Thread(target=run_webhook_thread, daemon=True).start()
+    Thread(target=run_webhook_wrapper, daemon=True).start()
 
 @app.route('/test-bot')
 def test_bot():
