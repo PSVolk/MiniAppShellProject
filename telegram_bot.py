@@ -287,29 +287,21 @@ class BotManager:
         self.update_queue = asyncio.Queue()
         return self.application
 
-    def run_webhook(self, hostname: str, port: int, secret_token: str):
-        """Синхронный запуск webhook"""
+    async def run_webhook(self, hostname: str, port: int, secret_token: str):
+        """Асинхронный запуск webhook"""
+        if not self.application:
+            self.init_bot()
 
-        async def _run():
-            app = await self._async_init()
-            await app.initialize()
-            await app.start()
+        webhook_url = f"https://{hostname}/webhook"
+        await self.application.bot.set_webhook(
+            url=webhook_url,
+            secret_token=secret_token,
+            drop_pending_updates=True
+        )
+        logger.info(f"Webhook установлен на {webhook_url}")
 
-            webhook_url = f"https://{hostname}/webhook"
-            await app.bot.set_webhook(
-                url=webhook_url,
-                secret_token=secret_token,
-                drop_pending_updates=True
-            )
-
-            # Запуск обработчика в том же loop
-            asyncio.create_task(self._process_updates(app))
-
-            while True:
-                await asyncio.sleep(3600)
-
-        # Запуск в выделенном loop
-        self.loop.run_until_complete(_run())
+        # Бесконечное ожидание
+        await asyncio.Event().wait()
 
     async def _process_updates(self, app):
         """Обработка обновлений"""
@@ -340,6 +332,15 @@ class BotManager:
         # Бесконечное ожидание
         await asyncio.Event().wait()
 
+    async def shutdown(self):
+        """Корректное завершение работы бота"""
+        if self.application:
+            await self.application.stop()
+            await self.application.shutdown()
+        self.loop.stop()
+
+
+
 
 # Глобальный экземпляр для использования в Flask
 bot_manager = BotManager()
@@ -350,10 +351,9 @@ def init_bot():
     return bot_manager.init_bot()
 
 
-def run_webhook_sync(hostname: str, port: int, secret_token: str):
+def run_webhook_sync(self, hostname: str, port: int, secret_token: str):
     """Синхронная обертка для запуска webhook"""
-    asyncio.run(bot_manager.run_webhook(hostname, port, secret_token))
-
+    asyncio.run(self.run_webhook(hostname, port, secret_token))
 
 def run_polling():
     """Запуск бота в режиме polling"""
