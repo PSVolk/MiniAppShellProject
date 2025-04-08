@@ -7,9 +7,13 @@ from flask import Flask, request, jsonify
 from telegram import Update
 from dotenv import load_dotenv
 import tracemalloc
-
+from telegram_bot import BotManager, init_bot
 # Инициализация трекинга памяти
 tracemalloc.start()
+
+app = Flask(__name__)
+bot_manager = BotManager()
+
 
 # Настройка логгирования
 logging.basicConfig(
@@ -75,26 +79,53 @@ def check_routes():
             "methods": list(rule.methods)
         })
     return jsonify(routes)
+@app.route('/force-check')
+async def force_check():
+    """Принудительная проверка соединения"""
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        await bot_manager.check_updates()
+        return jsonify({"status": "check_completed"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
+# @app.route('/webhook', methods=['POST'])
+# def telegram_webhook():
+#     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
+#         return "Unauthorized", 403
+#
+#     try:
+#         update = Update.de_json(request.get_json(), bot_manager.application.bot)
+#         bot_manager.put_update(update)
+#         return "OK", 200
+#     except Exception as e:
+#         logging.error(f"Webhook error: {e}")
+#         return "Error", 500
 @app.route('/webhook', methods=['POST'])
-def telegram_webhook():
+async def telegram_webhook():
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
+        logger.warning("Unauthorized webhook attempt")
         return "Unauthorized", 403
 
     try:
-        update = Update.de_json(request.get_json(), bot_manager.application.bot)
-        bot_manager.put_update(update)
+        update = Update.de_json(await request.get_json(), bot_manager.application.bot)
+        logger.info(f"Received update: {update.update_id}")
+
+        # Неблокирующая обработка
+        asyncio.create_task(bot_manager.process_webhook_update(update))
+
         return "OK", 200
     except Exception as e:
-        logging.error(f"Webhook error: {e}")
+        logger.error(f"Webhook error: {e}")
         return "Error", 500
 
 
 # def run_webhook_thread():
 #     """Запуск бота в отдельном потоке"""
 #     bot_manager.run_webhook(RENDER_HOSTNAME, PORT, WEBHOOK_SECRET)
-# 
-# 
+#
+#
 # if IS_RENDER:
 #     Thread(target=run_webhook_thread, daemon=True).start()
 
@@ -104,8 +135,8 @@ def run_webhook_wrapper():
     asyncio.set_event_loop(loop)
     try:
         loop.run_until_complete(bot_manager.run_webhook(
-            RENDER_HOSTNAME, 
-            PORT, 
+            RENDER_HOSTNAME,
+            PORT,
             WEBHOOK_SECRET
         ))
     except Exception as e:
