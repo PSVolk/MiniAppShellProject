@@ -48,11 +48,11 @@ services_keyboard = ReplyKeyboardMarkup(
     one_time_keyboard=False
 )
 
+
 class BotManager:
     def __init__(self):
         self.application = None
         self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
         self.executor = ThreadPoolExecutor(max_workers=1)
         self._init_db()
 
@@ -77,6 +77,7 @@ class BotManager:
                     FOREIGN KEY(user_id) REFERENCES clients(id)
                 )''')
             conn.commit()
+
     def hash_password(self, password):
         return hashlib.sha256(password.encode()).hexdigest()
 
@@ -86,13 +87,15 @@ class BotManager:
             cursor = conn.cursor()
             cursor.execute(
                 'SELECT id FROM clients WHERE username = ? OR phone = ?',
-                (username, phone))
+                (username, phone)
+            )
             if existing := cursor.fetchone():
                 return existing[0]
 
             cursor.execute(
                 'INSERT INTO clients (username, phone, password) VALUES (?, ?, ?)',
-                (username, phone, self.hash_password(password)))
+                (username, phone, self.hash_password(password))
+            )
             conn.commit()
             return cursor.lastrowid
 
@@ -102,7 +105,8 @@ class BotManager:
             cursor = conn.cursor()
             cursor.execute(
                 'INSERT INTO orders (user_id, service) VALUES (?, ?)',
-                (user_id, service))
+                (user_id, service)
+            )
             conn.commit()
             return cursor.lastrowid
 
@@ -117,7 +121,8 @@ class BotManager:
                     'parse_mode': 'HTML',
                     'disable_web_page_preview': True
                 },
-                timeout=5)
+                timeout=5
+            )
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
@@ -127,7 +132,8 @@ class BotManager:
         """Обработчик команды /start"""
         await update.message.reply_text(
             "🚀 Добро пожаловать в Мотомастер! Выберите услугу:",
-            reply_markup=services_keyboard)
+            reply_markup=services_keyboard
+        )
         return CHOOSING_SERVICE
 
     async def choose_service(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -136,13 +142,12 @@ class BotManager:
         if service not in SERVICES:
             await update.message.reply_text(
                 "⚠️ Выберите услугу из списка:",
-                reply_markup=services_keyboard)
+                reply_markup=services_keyboard
+            )
             return CHOOSING_SERVICE
 
         context.user_data['service'] = service
-        await update.message.reply_text(
-            "📝 Введите ваше имя:",
-            reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("📝 Введите ваше имя:", reply_markup=ReplyKeyboardRemove())
         return ENTERING_NAME
 
     async def enter_name(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,28 +183,39 @@ class BotManager:
                 f"✅ Спасибо, {username}! Ваш заказ #{order_id} принят.\n"
                 f"Услуга: {service}\n"
                 "Мы свяжемся с вами в ближайшее время.",
-                reply_markup=start_keyboard)
+                reply_markup=start_keyboard
+            )
 
             admin_msg = (
                 f"<b>Новый заказ!</b>\n\n"
                 f"<b>ID заказа:</b> {order_id}\n"
                 f"<b>Услуга:</b> {service}\n"
                 f"<b>Имя:</b> {username}\n"
-                f"<b>Телефон:</b> {phone}\n")
+                f"<b>Телефон:</b> {phone}\n"
+            )
             self.send_to_telegram(TELEGRAM_CHAT_ID, admin_msg)
 
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка базы данных: {e}")
+            await update.message.reply_text(
+                "⚠️ Ошибка при обработке заказа. Попробуйте позже.",
+                reply_markup=start_keyboard
+            )
         except Exception as e:
             logger.error(f"Ошибка оформления заказа: {e}")
             await update.message.reply_text(
                 "⚠️ Произошла ошибка. Пожалуйста, попробуйте еще раз.",
-                reply_markup=start_keyboard)
+                reply_markup=start_keyboard
+            )
+
         return ConversationHandler.END
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик отмены"""
         await update.message.reply_text(
             "❌ Действие отменено. Нажмите /start для продолжения.",
-            reply_markup=start_keyboard)
+            reply_markup=start_keyboard
+        )
         return ConversationHandler.END
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -208,34 +224,108 @@ class BotManager:
         if update and update.message:
             await update.message.reply_text(
                 "⚠️ Произошла ошибка. Пожалуйста, попробуйте позже.",
-                reply_markup=start_keyboard)
+                reply_markup=start_keyboard
+            )
 
-    async def process_webhook_update(self, update: Update):
-        """Асинхронная обработка обновлений"""
+    async def post_init(self, application):
+        """Функция, выполняемая после инициализации бота"""
+        logger.info("Бот успешно инициализирован")
+        logger.info("База данных готова к работе")
+
+    def init_bot(self):
+        """Инициализация и настройка бота"""
+        self.application = ApplicationBuilder() \
+            .token(TELEGRAM_BOT_TOKEN) \
+            .post_init(self.post_init) \
+            .build()
+
+        # Регистрация обработчиков
+        conv_handler = ConversationHandler(
+            entry_points=[CommandHandler('start', self.start)],
+            states={
+                CHOOSING_SERVICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_service)],
+                ENTERING_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.enter_name)],
+                ENTERING_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.enter_phone)],
+                ENTERING_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.enter_password)],
+            },
+            fallbacks=[CommandHandler('cancel', self.cancel)]
+        )
+
+        self.application.add_handler(conv_handler)
+        self.application.add_error_handler(self.error_handler)
+        return self.application
+
+    async def process_updates(self):
+        """Обработка обновлений из очереди"""
+        logger.info("Запуск обработчика обновлений")
         try:
-            logger.info(f"Processing update {update.update_id}")
-            await self.application.process_update(update)
-        except Exception as e:
-            logger.error(f"Update processing error: {e}")
+            while True:
+                try:
+                    update = await self.application.update_queue.get()
+                    logger.info(f"Обработка обновления ID: {update.update_id}")
 
-    async def run_webhook(self, hostname: str, port: int, secret_token: str):
-        """Асинхронный запуск webhook"""
-        if not self.application:
-            self.init_bot()
+                    await self.application.process_update(update)
+                    logger.info(f"Обновление {update.update_id} успешно обработано")
 
-        await self.application.initialize()
-        await self.application.start()
+                except Exception as e:
+                    logger.error(f"Ошибка обработки обновления: {str(e)}", exc_info=True)
+                    await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            logger.info("Обработчик обновлений остановлен")
 
-        webhook_url = f"https://{hostname}/webhook"
-        await self.application.bot.set_webhook(
-            url=webhook_url,
-            secret_token=secret_token,
-            drop_pending_updates=True)
-        logger.info(f"Webhook установлен на {webhook_url}")
+    async def _async_init(self):
+        """Асинхронная инициализация бота"""
+        self.application = ApplicationBuilder() \
+            .token(TELEGRAM_BOT_TOKEN) \
+            .build()
 
-        # Бесконечное ожидание
-        await asyncio.Event().wait()
+        # Регистрация обработчиков
+        conv_handler = ConversationHandler(...)
+        self.application.add_handler(conv_handler)
 
+        # Создаем очередь в текущем event loop
+        self.update_queue = asyncio.Queue()
+        return self.application
+
+    def run_webhook(self, hostname: str, port: int, secret_token: str):
+        """Синхронный запуск webhook"""
+
+        async def _run():
+            app = await self._async_init()
+            await app.initialize()
+            await app.start()
+
+            webhook_url = f"https://{hostname}/webhook"
+            await app.bot.set_webhook(
+                url=webhook_url,
+                secret_token=secret_token,
+                drop_pending_updates=True
+            )
+
+            # Запуск обработчика в том же loop
+            asyncio.create_task(self._process_updates(app))
+
+            while True:
+                await asyncio.sleep(3600)
+
+        # Запуск в выделенном loop
+        self.loop.run_until_complete(_run())
+
+    async def _process_updates(self, app):
+        """Обработка обновлений"""
+        while True:
+            try:
+                update = await self.update_queue.get()
+                await app.process_update(update)
+            except Exception as e:
+                logging.error(f"Update error: {e}")
+
+    def put_update(self, update):
+        """Добавление обновления в очередь"""
+        asyncio.run_coroutine_threadsafe(
+            self.update_queue.put(update),
+            self.loop
+        )
     async def run_polling(self):
         """Запуск бота в режиме polling"""
         if not self.application:
@@ -250,36 +340,25 @@ class BotManager:
         # Бесконечное ожидание
         await asyncio.Event().wait()
 
-    def init_bot(self):
-        """Инициализация и настройка бота"""
-        self.application = ApplicationBuilder() \
-            .token(TELEGRAM_BOT_TOKEN) \
-            .build()
 
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler('start', self.start)],
-            states={
-                CHOOSING_SERVICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.choose_service)],
-                ENTERING_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.enter_name)],
-                ENTERING_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.enter_phone)],
-                ENTERING_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, self.enter_password)],
-            },
-            fallbacks=[CommandHandler('cancel', self.cancel)])
-
-        self.application.add_handler(conv_handler)
-        self.application.add_error_handler(self.error_handler)
-        return self.application
-
-# Создание экземпляра бота
+# Глобальный экземпляр для использования в Flask
 bot_manager = BotManager()
+
 
 def init_bot():
     """Инициализация бота"""
     return bot_manager.init_bot()
 
+
+def run_webhook_sync(hostname: str, port: int, secret_token: str):
+    """Синхронная обертка для запуска webhook"""
+    asyncio.run(bot_manager.run_webhook(hostname, port, secret_token))
+
+
 def run_polling():
     """Запуск бота в режиме polling"""
     asyncio.run(bot_manager.run_polling())
+
 
 if __name__ == '__main__':
     try:
@@ -288,7 +367,10 @@ if __name__ == '__main__':
                 await bot_manager.run_webhook(
                     "localhost",
                     5000,
-                    "test_secret")
+                    "test_secret"
+                )
+
+
             asyncio.run(test_webhook())
         else:
             run_polling()
