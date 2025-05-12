@@ -7,13 +7,9 @@ from flask import Flask, request, jsonify
 from telegram import Update
 from dotenv import load_dotenv
 import tracemalloc
-from telegram_bot import BotManager, init_bot
+
 # Инициализация трекинга памяти
 tracemalloc.start()
-
-app = Flask(__name__)
-bot_manager = BotManager()
-
 
 # Настройка логгирования
 logging.basicConfig(
@@ -31,7 +27,7 @@ IS_RENDER = os.getenv('IS_RENDER', 'false').lower() == 'true'
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 WEBHOOK_SECRET = os.getenv('WEBHOOK_SECRET')
 RENDER_HOSTNAME = os.getenv('RENDER_EXTERNAL_HOSTNAME')
-PORT = int(os.getenv('PORT', '10000'))
+PORT = int(os.getenv('PORT', '5000'))
 
 if not TELEGRAM_BOT_TOKEN:
     raise ValueError("TELEGRAM_BOT_TOKEN не найден в .env файле!")
@@ -48,104 +44,27 @@ from telegram_bot import init_bot, run_polling, bot_manager
 bot_application = init_bot()
 
 
-@app.route('/webhook-info')
-def webhook_info():
-    try:
-        if not hasattr(bot_manager, 'application'):
-            return jsonify({"error": "Bot not initialized"}), 500
-
-        # Получаем информацию о webhook синхронно
-        async def get_webhook_info_async():
-            return await bot_manager.application.bot.get_webhook_info()
-
-        loop = asyncio.new_event_loop()
-        webhook_info = loop.run_until_complete(get_webhook_info_async())
-        loop.close()
-
-        return jsonify({
-            "url": webhook_info.url,
-            "pending_update_count": webhook_info.pending_update_count,
-            "last_error_date": webhook_info.last_error_date.isoformat() if webhook_info.last_error_date else None,
-            "last_error_message": webhook_info.last_error_message
-        })
-    except Exception as e:
-        return jsonify({"error": str(e), "type": type(e).__name__}), 500
-@app.route('/check-routes')
-def check_routes():
-    routes = []
-    for rule in app.url_map.iter_rules():
-        routes.append({
-            "route": str(rule),
-            "methods": list(rule.methods)
-        })
-    return jsonify(routes)
-@app.route('/force-check')
-async def force_check():
-    """Принудительная проверка соединения"""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        await bot_manager.check_updates()
-        return jsonify({"status": "check_completed"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# @app.route('/webhook', methods=['POST'])
-# def telegram_webhook():
-#     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
-#         return "Unauthorized", 403
-#
-#     try:
-#         update = Update.de_json(request.get_json(), bot_manager.application.bot)
-#         bot_manager.put_update(update)
-#         return "OK", 200
-#     except Exception as e:
-#         logging.error(f"Webhook error: {e}")
-#         return "Error", 500
 @app.route('/webhook', methods=['POST'])
-async def telegram_webhook():
+def telegram_webhook():
     if request.headers.get('X-Telegram-Bot-Api-Secret-Token') != WEBHOOK_SECRET:
-        logger.warning("Unauthorized webhook attempt")
         return "Unauthorized", 403
 
     try:
-        update = Update.de_json(await request.get_json(), bot_manager.application.bot)
-        logger.info(f"Received update: {update.update_id}")
-
-        # Неблокирующая обработка
-        asyncio.create_task(bot_manager.process_webhook_update(update))
-
+        update = Update.de_json(request.get_json(), bot_manager.application.bot)
+        bot_manager.put_update(update)
         return "OK", 200
     except Exception as e:
-        logger.error(f"Webhook error: {e}")
+        logging.error(f"Webhook error: {e}")
         return "Error", 500
 
 
-# def run_webhook_thread():
-#     """Запуск бота в отдельном потоке"""
-#     bot_manager.run_webhook(RENDER_HOSTNAME, PORT, WEBHOOK_SECRET)
-#
-#
-# if IS_RENDER:
-#     Thread(target=run_webhook_thread, daemon=True).start()
+def run_webhook_thread():
+    """Запуск бота в отдельном потоке"""
+    bot_manager.run_webhook(RENDER_HOSTNAME, PORT, WEBHOOK_SECRET)
 
-def run_webhook_wrapper():
-    """Обертка для запуска webhook"""
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(bot_manager.run_webhook(
-            RENDER_HOSTNAME,
-            PORT,
-            WEBHOOK_SECRET
-        ))
-    except Exception as e:
-        logger.error(f"Webhook failed: {e}")
-    finally:
-        loop.close()
 
 if IS_RENDER:
-    Thread(target=run_webhook_wrapper, daemon=True).start()
+    Thread(target=run_webhook_thread, daemon=True).start()
 
 @app.route('/test-bot')
 def test_bot():
@@ -216,18 +135,22 @@ def run_webhook_wrapper():
 def main():
     if IS_RENDER:
         logger.info("Starting in WEBHOOK mode")
-        # Создаем отдельный поток для бота
-        bot_thread = Thread(target=bot_manager.run_webhook, args=(RENDER_HOSTNAME, PORT, WEBHOOK_SECRET))
-        bot_thread.daemon = True
-        bot_thread.start()
+
+        # Инициализация обработчика очереди
+        def start_webhook():
+            asyncio.run(bot_manager.run_webhook(
+                RENDER_HOSTNAME,
+                PORT,
+                WEBHOOK_SECRET
+            ))
+
+        Thread(target=start_webhook, daemon=True).start()
     else:
         logger.info("Starting in POLLING mode")
-        bot_thread = Thread(target=run_polling)
-        bot_thread.daemon = True
-        bot_thread.start()
+        Thread(target=run_polling, daemon=True).start()
 
-    # Запускаем Flask в основном потоке
     run_flask()
+
 
 if __name__ == '__main__':
     try:
