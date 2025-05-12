@@ -37,7 +37,7 @@ SERVICES = {
     "🆘 Помощь на дороге": "road_assistance"
 }
 
-# Состояния разговора
+# Состояния диалога
 CHOOSING_SERVICE, ENTERING_NAME, ENTERING_PHONE, ENTERING_PASSWORD = range(4)
 
 # Клавиатуры
@@ -337,7 +337,6 @@ class BotManager:
         await self.application.updater.start_polling()
         logger.info("Бот успешно запущен")
 
-        # Бесконечное ожидание
         await asyncio.Event().wait()
 
 
